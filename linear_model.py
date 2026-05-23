@@ -19,7 +19,9 @@ def summary_OLS(model, X, y):
     r2 = model.score(X, y)
     adj_r2 = 1 - (1 - r2) * (len(X) - 1) / (len(X) - X.shape[1] - 1)
 
+    print("\n" + "-" * 50)
     print(f"OLS Regression Results:")
+    print("-" * 50)
     print(f"Intercept (b0): {b0}")
     print(f"Slope (b1 coefficient): {b1}")
     print(f"Standard Error of Slope: {slope_se}")
@@ -104,7 +106,7 @@ def scale_location_plot(y_pred, residuals, ax, title="Scale-Location Plot"):
 
 
 def diagnostic_plots(y, y_pred):
-    residuals = np.asarray(y).flatten() - np.asarray(y_pred).flatten()
+    residuals = calc_residuals(y, y_pred)
     fitted_values = np.asarray(y_pred).flatten()
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -117,6 +119,39 @@ def diagnostic_plots(y, y_pred):
 
     fig.tight_layout()
     plt.show()
+
+
+def calc_residuals(y, y_pred):
+    return np.asarray(y).flatten() - np.asarray(y_pred).flatten()
+
+
+def shapiro_wilk_test(residuals):
+    stat, p_value = stats.shapiro(residuals)
+    print("\n" + "-" * 50)
+    print("Shapiro-Wilk Test for Normality of Residuals")
+    print("-" * 50)
+    print(f"W = {stat}\np-value = {p_value}")
+    if p_value > 0.05:
+        print("Residuals are likely normally distributed (fail to reject H0).")
+    else:
+        print("Residuals are not normally distributed (reject H0).")
+
+
+def levene_test(y_pred, residuals, n_groups=4):
+    groups = pd.cut(y_pred.squeeze(), bins=n_groups)
+    grouped_residuals = [
+        residuals[groups == g]
+        for g in groups.categories
+    ]
+    stat, p_value = stats.levene(*grouped_residuals)
+    print("\n" + "-" * 50)
+    print("Levene's Test for Homogeneity of Variance")
+    print("-" * 50)
+    print(f"W = {stat}\np-value = {p_value}")
+    if p_value > 0.05:
+        print("Residuals have equal variances (fail to reject H0).")
+    else:
+        print("Residuals do not have equal variances (reject H0).")
     
 
 def main():
@@ -132,6 +167,10 @@ def main():
 
     summary_OLS(model, X, y)
     diagnostic_plots(y, y_pred)
+
+    residuals = calc_residuals(y, y_pred)
+    shapiro_wilk_test(residuals)
+    levene_test(y_pred, residuals)
 
 
 if __name__ == "__main__":
