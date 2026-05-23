@@ -9,12 +9,17 @@ from sklearn.linear_model import LinearRegression
 from config import TARGET_COLS, ID_COLS, PREDICTOR_COLS
 
 
+def _as_scalar(value):
+    return np.asarray(value).reshape(-1)[0]
+
+
 def summary_OLS(model, X, y):
     y_pred = model.predict(X)
 
-    b0 = model.intercept_[0]
-    b1= model.coef_[0]
+    b0 = _as_scalar(model.intercept_)
+    b1 = _as_scalar(model.coef_)
     slope_se = np.sqrt(np.sum((y - y_pred) ** 2) / (len(X) - 2)) / np.sqrt(np.sum((X - np.mean(X)) ** 2))
+    slope_se = _as_scalar(slope_se)
     p_value = 2 * (1 - stats.t.cdf(np.abs(b1 / slope_se), df=len(X) - 2))
     r2 = model.score(X, y)
     adj_r2 = 1 - (1 - r2) * (len(X) - 1) / (len(X) - X.shape[1] - 1)
@@ -33,6 +38,16 @@ def summary_OLS(model, X, y):
     print(f"Adjusted R-squared: {adj_r2}")
 
     print(f"95% Confidence Interval for Slope: [{ci_lower}, {ci_upper}]")
+
+    return {
+        "b0": b0,
+        "b1": b1,
+        "slope_se": slope_se,
+        "p_value": _as_scalar(p_value),
+        "r2": r2,
+        "adj_r2": adj_r2,
+        "ci_95_slope": (ci_lower, ci_upper)
+    }
 
 
 def add_panel_label(ax, label):
@@ -310,6 +325,44 @@ def robust_model_summary(data, x_col, y_col):
     }
 
 
+def create_regression_summary_table(ols_results, bootstrap_results, m_estimators_results):
+    ols_ci = ols_results["ci_95_slope"]
+    bootstrap_ci = bootstrap_results["ci_95_slope"]
+
+    ols_p_to_print = "p<.001" if ols_results["p_value"] < 0.001 else f"p={ols_results['p_value']:.6f}"
+
+    summary_df = pd.DataFrame(
+        [
+            {
+                "Method": "OLS",
+                "Intercept": ols_results["b0"],
+                "Slope": ols_results["b1"],
+                "SE(Slope)": ols_results["slope_se"],
+                "Significance": f"{ols_p_to_print}; CI95%=[{ols_ci[0]:.6f}, {ols_ci[1]:.6f}]",
+            },
+            {
+                "Method": "Bootstrap",
+                "Intercept": bootstrap_results["intercept_mean"],
+                "Slope": bootstrap_results["slope_mean"],
+                "SE(Slope)": bootstrap_results["slope_std"],
+                "Significance": f"CI95%=[{bootstrap_ci[0]:.6f}, {bootstrap_ci[1]:.6f}]",
+            },
+            {
+                "Method": "M-estimators",
+                "Intercept": m_estimators_results["coef"][0],
+                "Slope": m_estimators_results["coef"][1],
+                "SE(Slope)": m_estimators_results["se_slope"],
+                "Significance": f"t={m_estimators_results['t_stat_slope']:.6f}",
+            },
+        ]
+    )
+
+    print("\nRegression summary table")
+    print(summary_df.to_string(index=False))
+
+    return summary_df
+
+
 def main():
     data_df = pd.read_csv("data_ideal_188834.csv")
     
@@ -321,7 +374,7 @@ def main():
 
     y_pred = model.predict(X)
 
-    summary_OLS(model, X, y)
+    ols_results = summary_OLS(model, X, y)
     diagnostic_plots(y, y_pred)
 
     residuals = calc_residuals(y, y_pred)
@@ -350,6 +403,14 @@ def main():
         x_col="hours_studied",
         y_col="exam_score"
     )
+
+    create_regression_summary_table(
+        ols_results=ols_results,
+        bootstrap_results=bootstrap_results,
+        m_estimators_results=m_estimators_results,
+    )
+
+
 
 
 if __name__ == "__main__":
