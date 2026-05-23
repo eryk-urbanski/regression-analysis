@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from sklearn.neural_network import MLPRegressor
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
@@ -58,6 +59,22 @@ def analyze_lgbm(X, y):
     return comparison, kfold
 
 
+def analyze_mlp(X, y):
+    model_mlp = make_pipeline(
+        StandardScaler(),
+        MLPRegressor(hidden_layer_sizes=(32, 16), solver="lbfgs", max_iter=5000, random_state=14),
+    )
+    model_mlp.fit(X, y)
+
+    comparison = comparison_metrics(model_mlp, X, y)
+    comparison["Model"] = "MLP Regressor"
+
+    kfold = kfold_comparison_metrics(model_mlp, X, y)
+    kfold["Model"] = "MLP Regressor"
+
+    return comparison, kfold
+
+
 def main():
     data_df = pd.read_csv("data_ideal_188834.csv")
     # data_df = pd.read_csv("life.csv") # SOURCE: https://www.kaggle.com/datasets/kumarajarshi/life-expectancy-who
@@ -70,9 +87,10 @@ def main():
     metrics_no_pca, kfold_no_pca = analyze_no_pca(X, y)
     metrics_with_pca, kfold_with_pca = analyze_with_pca(X, y)
     metrics_lgbm, kfold_lgbm = analyze_lgbm(X, y)
+    metrics_mlp, kfold_mlp = analyze_mlp(X, y)
 
-    create_comparison_summary_table(metrics_no_pca, metrics_with_pca, metrics_lgbm)
-    create_kfold_summary_table(kfold_no_pca, kfold_with_pca, kfold_lgbm)
+    create_comparison_summary_table(metrics_no_pca, metrics_with_pca, metrics_lgbm, metrics_mlp)
+    create_kfold_summary_table(kfold_no_pca, kfold_with_pca, kfold_lgbm, kfold_mlp)
 
 
 if __name__ == "__main__":
