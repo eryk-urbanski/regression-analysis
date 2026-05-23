@@ -19,6 +19,9 @@ def summary_OLS(model, X, y):
     r2 = model.score(X, y)
     adj_r2 = 1 - (1 - r2) * (len(X) - 1) / (len(X) - X.shape[1] - 1)
 
+    ci_lower = b1 - 1.96 * slope_se
+    ci_upper = b1 + 1.96 * slope_se
+
     print("\n" + "-" * 50)
     print(f"OLS Regression Results:")
     print("-" * 50)
@@ -28,6 +31,8 @@ def summary_OLS(model, X, y):
     print(f"p-value: {p_value}")
     print(f"R-squared: {r2}")
     print(f"Adjusted R-squared: {adj_r2}")
+
+    print(f"95% Confidence Interval for Slope: [{ci_lower}, {ci_upper}]")
 
 
 def add_panel_label(ax, label):
