@@ -271,6 +271,45 @@ def bootstrap(data, x_col, y_col, n_boot=2000, seed=None):
     }
 
 
+def robust_model_summary(data, x_col, y_col):
+    """
+    Robust linear regression summary (R: rlm + psi.huber equivalent).
+    """
+
+    # Prepare data
+    X = data[x_col].values
+    y = data[y_col].values
+
+    # Add intercept (like R formula)
+    X = sm.add_constant(X)
+
+    # Robust linear model (Huber M-estimator)
+    model = sm.RLM(y, X, M=sm.robust.norms.HuberT()).fit()
+
+    # Coefficients (like coef(model))
+    coef = model.params
+
+    # Standard error of slope (like summary$coefficients["x", "Std. Error"])
+    se_slope = model.bse[1]
+
+    # Print results
+    print("\n" + "-" * 50)
+    print("Robust Linear Regression Results")
+    print("-" * 50)
+
+    print(f"Intercept: {coef[0]:.6f}")
+    print(f"Slope (b1 coefficient): {coef[1]:.6f}")
+    print(f"Standard Error of Slope: {se_slope:.6f}")
+    print(f"t statistic for slope: {coef[1] / se_slope:.6f}")
+
+    return {
+        "model": model,
+        "coef": coef,
+        "se_slope": se_slope,
+        "t_stat_slope": coef[1] / se_slope if se_slope != 0 else 0
+    }
+
+
 def main():
     data_df = pd.read_csv("data_ideal_188834.csv")
     
@@ -304,6 +343,12 @@ def main():
         y_col="exam_score",
         n_boot=2000,
         seed=14
+    )
+
+    m_estimators_results = robust_model_summary(
+        data=data_df,
+        x_col="hours_studied",
+        y_col="exam_score"
     )
 
 
