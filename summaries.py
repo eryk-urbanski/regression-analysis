@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from scipy import stats
+from sklearn.base import clone
+from sklearn.model_selection import KFold
 
 from utils import _as_scalar
 
@@ -49,23 +51,15 @@ def robust_model_summary(data, x_col, y_col):
     Robust linear regression summary (R: rlm + psi.huber equivalent).
     """
 
-    # Prepare data
     X = data[x_col].values
     y = data[y_col].values
-
-    # Add intercept (like R formula)
     X = sm.add_constant(X)
 
-    # Robust linear model (Huber M-estimator)
     model = sm.RLM(y, X, M=sm.robust.norms.HuberT()).fit()
 
-    # Coefficients (like coef(model))
     coef = model.params
-
-    # Standard error of slope (like summary$coefficients["x", "Std. Error"])
     se_slope = model.bse[1]
 
-    # Print results
     print("\n" + "-" * 50)
     print("Robust Linear Regression Results")
     print("-" * 50)
@@ -87,39 +81,31 @@ def summary_OLS(model, X, y):
     y_pred = model.predict(X)
 
     n = len(X)
-    p = X.shape[1]  # number of predictors
+    p = X.shape[1]
 
     b0 = _as_scalar(model.intercept_)
     b1 = _as_scalar(model.coef_)
 
-    # Residual Sum of Squares
     rss = np.sum((y - y_pred) ** 2)
 
-    # Standard Error of slope
     slope_se = np.sqrt(rss / (n - 2)) / np.sqrt(np.sum((X - np.mean(X)) ** 2))
     slope_se = _as_scalar(slope_se)
 
-    # p-value
     p_value = 2 * (1 - stats.t.cdf(np.abs(b1 / slope_se), df=n - 2))
     p_value_to_print = "p<.001" if p_value < 0.001 else f"p={p_value:.6f}"
 
-    # R² and Adjusted R²
     r2 = model.score(X, y)
     adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
 
-    # Confidence interval
     ci_lower = b1 - 1.96 * slope_se
     ci_upper = b1 + 1.96 * slope_se
 
-    # --- AIC and BIC ---
-    # k = number of estimated parameters (predictors + intercept)
     k = p + 1
-
     aic = n * np.log(rss / n) + 2 * k
     bic = n * np.log(rss / n) + k * np.log(n)
 
     print("\n" + "-" * 50)
-    print(f"OLS Regression Results:")
+    print("OLS Regression Results:")
     print("-" * 50)
     print(f"Intercept (b0): {b0}")
     print(f"Slope (b1 coefficient): {b1}")
@@ -129,7 +115,6 @@ def summary_OLS(model, X, y):
     print(f"Adjusted R-squared: {adj_r2}")
     print(f"AIC: {aic}")
     print(f"BIC: {bic}")
-
     print(f"95% Confidence Interval for Slope: [{ci_lower}, {ci_upper}]")
 
     return {
@@ -146,33 +131,72 @@ def summary_OLS(model, X, y):
 
 
 def comparison_metrics(model, X, y):
-    y_pred = model.predict(X)
+    y_true = np.asarray(y).ravel()
+    y_pred = np.asarray(model.predict(X)).ravel()
 
     n = len(X)
-    p = X.shape[1]  # number of predictors
+    p = X.shape[1]
 
-    # Residual Sum of Squares
-    rss = np.sum((y - y_pred) ** 2)
+    rss = np.sum((y_true - y_pred) ** 2)
 
-    # R² and Adjusted R²
-    r2 = model.score(X, y)
+    r2 = model.score(X, y_true)
     adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
 
-    # AIC and BIC
-    k = p + 1  # number of estimated parameters (predictors + intercept)
+    k = p + 1
     aic = n * np.log(rss / n) + 2 * k
     bic = n * np.log(rss / n) + k * np.log(n)
 
     return {
-        "r2": r2,
-        "adj_r2": adj_r2,
-        "aic": aic,
-        "bic": bic
+        "R-squared": float(r2),
+        "Adjusted R-squared": float(adj_r2),
+        "AIC": float(aic),
+        "BIC": float(bic)
+    }
+
+
+def kfold_comparison_metrics(model, X, y, n_splits=5):
+    X_array = np.asarray(X)
+    y_array = np.asarray(y).ravel()
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    absolute_percentage_errors = []
+
+    for train_idx, test_idx in kf.split(X_array):
+        fold_model = clone(model)
+        X_train, X_test = X_array[train_idx], X_array[test_idx]
+        y_train, y_test = y_array[train_idx], y_array[test_idx]
+
+        fold_model.fit(X_train, y_train)
+        y_pred = np.asarray(fold_model.predict(X_test)).ravel()
+
+        non_zero_mask = y_test != 0
+        if np.any(non_zero_mask):
+            fold_errors = np.abs(
+                (y_test[non_zero_mask] - y_pred[non_zero_mask]) / y_test[non_zero_mask]
+            ) * 100
+            absolute_percentage_errors.extend(fold_errors.tolist())
+
+    if not absolute_percentage_errors:
+        raise ValueError("Cannot calculate percentage error because all target values are zero.")
+
+    return {
+        "Mean APE (%)": float(np.mean(absolute_percentage_errors)),
+        "Median APE (%)": float(np.median(absolute_percentage_errors))
     }
 
 
 def create_comparison_summary_table(*metrics_dicts):
     summary_df = pd.DataFrame(metrics_dicts)
+    if "Model" in summary_df.columns:
+        summary_df = summary_df[["Model"] + [col for col in summary_df.columns if col != "Model"]]
     print("\nModel Comparison Summary")
+    print(summary_df.to_string(index=False))
+    return summary_df
+
+
+def create_kfold_summary_table(*metrics_dicts):
+    summary_df = pd.DataFrame(metrics_dicts)
+    if "Model" in summary_df.columns:
+        summary_df = summary_df[["Model"] + [col for col in summary_df.columns if col != "Model"]]
+    print("\nK-Fold Model Assessment Summary")
     print(summary_df.to_string(index=False))
     return summary_df
