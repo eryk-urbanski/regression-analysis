@@ -86,16 +86,37 @@ def robust_model_summary(data, x_col, y_col):
 def summary_OLS(model, X, y):
     y_pred = model.predict(X)
 
+    n = len(X)
+    p = X.shape[1]  # number of predictors
+
     b0 = _as_scalar(model.intercept_)
     b1 = _as_scalar(model.coef_)
-    slope_se = np.sqrt(np.sum((y - y_pred) ** 2) / (len(X) - 2)) / np.sqrt(np.sum((X - np.mean(X)) ** 2))
-    slope_se = _as_scalar(slope_se)
-    p_value = 2 * (1 - stats.t.cdf(np.abs(b1 / slope_se), df=len(X) - 2))
-    r2 = model.score(X, y)
-    adj_r2 = 1 - (1 - r2) * (len(X) - 1) / (len(X) - X.shape[1] - 1)
 
+    # Residual Sum of Squares
+    rss = np.sum((y - y_pred) ** 2)
+
+    # Standard Error of slope
+    slope_se = np.sqrt(rss / (n - 2)) / np.sqrt(np.sum((X - np.mean(X)) ** 2))
+    slope_se = _as_scalar(slope_se)
+
+    # p-value
+    p_value = 2 * (1 - stats.t.cdf(np.abs(b1 / slope_se), df=n - 2))
+    p_value_to_print = "p<.001" if p_value < 0.001 else f"p={p_value:.6f}"
+
+    # R² and Adjusted R²
+    r2 = model.score(X, y)
+    adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
+
+    # Confidence interval
     ci_lower = b1 - 1.96 * slope_se
     ci_upper = b1 + 1.96 * slope_se
+
+    # --- AIC and BIC ---
+    # k = number of estimated parameters (predictors + intercept)
+    k = p + 1
+
+    aic = n * np.log(rss / n) + 2 * k
+    bic = n * np.log(rss / n) + k * np.log(n)
 
     print("\n" + "-" * 50)
     print(f"OLS Regression Results:")
@@ -103,9 +124,11 @@ def summary_OLS(model, X, y):
     print(f"Intercept (b0): {b0}")
     print(f"Slope (b1 coefficient): {b1}")
     print(f"Standard Error of Slope: {slope_se}")
-    print(f"p-value: {p_value}")
+    print(f"p-value: {p_value_to_print}")
     print(f"R-squared: {r2}")
     print(f"Adjusted R-squared: {adj_r2}")
+    print(f"AIC: {aic}")
+    print(f"BIC: {bic}")
 
     print(f"95% Confidence Interval for Slope: [{ci_lower}, {ci_upper}]")
 
@@ -116,5 +139,40 @@ def summary_OLS(model, X, y):
         "p_value": _as_scalar(p_value),
         "r2": r2,
         "adj_r2": adj_r2,
+        "aic": aic,
+        "bic": bic,
         "ci_95_slope": (ci_lower, ci_upper)
     }
+
+
+def comparison_metrics(model, X, y):
+    y_pred = model.predict(X)
+
+    n = len(X)
+    p = X.shape[1]  # number of predictors
+
+    # Residual Sum of Squares
+    rss = np.sum((y - y_pred) ** 2)
+
+    # R² and Adjusted R²
+    r2 = model.score(X, y)
+    adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
+
+    # AIC and BIC
+    k = p + 1  # number of estimated parameters (predictors + intercept)
+    aic = n * np.log(rss / n) + 2 * k
+    bic = n * np.log(rss / n) + k * np.log(n)
+
+    return {
+        "r2": r2,
+        "adj_r2": adj_r2,
+        "aic": aic,
+        "bic": bic
+    }
+
+
+def create_comparison_summary_table(*metrics_dicts):
+    summary_df = pd.DataFrame(metrics_dicts)
+    print("\nModel Comparison Summary")
+    print(summary_df.to_string(index=False))
+    return summary_df
