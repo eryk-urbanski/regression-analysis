@@ -174,6 +174,97 @@ def levene_test(y_pred, residuals, n_groups=4):
         print("Residuals do not have equal variances (reject H0).")
 
 
+def _predict_for_plot(model, X_values):
+    try:
+        predictions = model.predict(X_values)
+    except (TypeError, ValueError):
+        X_with_const = sm.add_constant(X_values, has_constant="add")
+        predictions = model.predict(X_with_const)
+
+    return np.asarray(predictions).reshape(-1)
+
+
+def _confidence_band_for_plot(model, X_values, ci=95):
+    if not hasattr(model, "cov_params"):
+        return None, None
+
+    covariance = np.asarray(model.cov_params())
+    if covariance.ndim != 2:
+        return None, None
+
+    n_features = X_values.shape[1]
+    if covariance.shape == (n_features + 1, n_features + 1):
+        design_matrix = sm.add_constant(X_values, has_constant="add")
+    elif covariance.shape == (n_features, n_features):
+        design_matrix = X_values
+    else:
+        return None, None
+
+    standard_errors = np.sqrt(np.einsum("ij,jk,ik->i", design_matrix, covariance, design_matrix))
+    z_value = stats.norm.ppf(0.5 + ci / 200)
+    fitted_values = _predict_for_plot(model, X_values)
+
+    lower = fitted_values - z_value * standard_errors
+    upper = fitted_values + z_value * standard_errors
+
+    return lower, upper
+
+
+def scatter_with_model(data, x_col, y_col, model, title=None,
+                       x_label=None, y_label=None,
+                       point_color="steelblue",
+                       line_color="red",
+                       alpha=0.7,
+                       ci=95,
+                       band_alpha=0.2):
+    """
+    Scatter plot with fitted line for any model exposing predict().
+
+    Parameters:
+    - data: pandas DataFrame
+    - x_col: name of x variable column
+    - y_col: name of y variable column
+    - model: fitted model object with predict()
+    - title: plot title (optional)
+    - x_label: x-axis label (optional)
+    - y_label: y-axis label (optional)
+    """
+
+    x_values = data[x_col].to_numpy()
+    y_values = data[y_col].to_numpy()
+
+    order = np.argsort(x_values)
+    x_sorted = x_values[order].reshape(-1, 1)
+    y_pred_sorted = _predict_for_plot(model, x_sorted)
+    ci_lower, ci_upper = _confidence_band_for_plot(model, x_sorted, ci=ci)
+
+    plt.figure()
+    plt.scatter(
+        x_values,
+        y_values,
+        color=point_color,
+        s=60,
+        alpha=alpha,
+    )
+    if ci_lower is not None and ci_upper is not None:
+        plt.fill_between(
+            x_sorted.ravel(),
+            ci_lower,
+            ci_upper,
+            color=line_color,
+            alpha=band_alpha,
+        )
+    plt.plot(x_sorted.ravel(), y_pred_sorted, color=line_color, linewidth=2)
+
+    if title:
+        plt.title(title, fontweight="bold")
+
+    plt.xlabel(x_label if x_label else x_col)
+    plt.ylabel(y_label if y_label else y_col)
+
+    plt.show()
+
+
 def scatter_with_regression(data, x_col, y_col, title=None,
                             x_label=None, y_label=None,
                             point_color="steelblue",
@@ -181,15 +272,7 @@ def scatter_with_regression(data, x_col, y_col, title=None,
                             alpha=0.7,
                             ci=95):
     """
-    Generic ggplot2-like scatter + linear regression plot.
-
-    Parameters:
-    - data: pandas DataFrame
-    - x_col: name of x variable column
-    - y_col: name of y variable column
-    - title: plot title (optional)
-    - x_label: x-axis label (optional)
-    - y_label: y-axis label (optional)
+    Scatter plot with an OLS regression line and optional confidence band.
     """
 
     plt.figure()
@@ -216,7 +299,7 @@ def scatter_with_regression(data, x_col, y_col, title=None,
     plt.ylabel(y_label if y_label else y_col)
 
     plt.show()
-    
+
 
 def bootstrap(data, x_col, y_col, n_boot=2000, seed=None):
     """
@@ -365,6 +448,7 @@ def create_regression_summary_table(ols_results, bootstrap_results, m_estimators
 
 def main():
     data_df = pd.read_csv("data_ideal_188834.csv")
+    # data_df = pd.read_csv("data_outliers_188834.csv")
     
     X = data_df[PREDICTOR_COLS]
     y = data_df[TARGET_COLS]
@@ -410,7 +494,16 @@ def main():
         m_estimators_results=m_estimators_results,
     )
 
-
+    scatter_with_model(
+        data=data_df,
+        x_col="hours_studied",
+        y_col="exam_score",
+        model=m_estimators_results["model"],
+        title="Exam Score vs Hours Studied with M-estimators Regression",
+        x_label="Hours Studied",
+        y_label="Exam Score (0--100)",
+        line_color="darkgreen",
+    )
 
 
 if __name__ == "__main__":
