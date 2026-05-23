@@ -152,6 +152,50 @@ def levene_test(y_pred, residuals, n_groups=4):
         print("Residuals have equal variances (fail to reject H0).")
     else:
         print("Residuals do not have equal variances (reject H0).")
+
+
+def scatter_with_regression(data, x_col, y_col, title=None,
+                            x_label=None, y_label=None,
+                            point_color="steelblue",
+                            line_color="red",
+                            alpha=0.7,
+                            ci=95):
+    """
+    Generic ggplot2-like scatter + linear regression plot.
+
+    Parameters:
+    - data: pandas DataFrame
+    - x_col: name of x variable column
+    - y_col: name of y variable column
+    - title: plot title (optional)
+    - x_label: x-axis label (optional)
+    - y_label: y-axis label (optional)
+    """
+
+    plt.figure()
+
+    sns.regplot(
+        data=data,
+        x=x_col,
+        y=y_col,
+        scatter_kws={
+            "color": point_color,
+            "s": 60,
+            "alpha": alpha
+        },
+        line_kws={
+            "color": line_color
+        },
+        ci=ci
+    )
+
+    if title:
+        plt.title(title, fontweight="bold")
+
+    plt.xlabel(x_label if x_label else x_col)
+    plt.ylabel(y_label if y_label else y_col)
+
+    plt.show()
     
 
 def main():
@@ -171,6 +215,15 @@ def main():
     residuals = calc_residuals(y, y_pred)
     shapiro_wilk_test(residuals)
     levene_test(y_pred, residuals)
+
+    scatter_with_regression(
+        data=data_df,
+        x_col="hours_studied",
+        y_col="exam_score",
+        title="Exam Score vs Hours Studied with Linear Regression",
+        x_label="Hours Studied",
+        y_label="Exam Score (0--100)"
+    )
 
 
 if __name__ == "__main__":
