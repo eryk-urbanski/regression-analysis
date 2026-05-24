@@ -3,7 +3,7 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy import stats
 from sklearn.base import clone
-from sklearn.model_selection import KFold
+from sklearn.model_selection import GroupKFold, KFold
 
 from utils import _as_scalar
 
@@ -154,14 +154,11 @@ def comparison_metrics(model, X, y):
     }
 
 
-def kfold_comparison_metrics(model, X, y, n_splits=5):
-    X_array = np.asarray(X)
-    y_array = np.asarray(y).ravel()
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+def _cross_val_ape_metrics(model, X_array, y_array, splits):
     absolute_percentage_errors = []
     fold_mean_apes = []
 
-    for train_idx, test_idx in kf.split(X_array):
+    for train_idx, test_idx in splits:
         fold_model = clone(model)
         X_train, X_test = X_array[train_idx], X_array[test_idx]
         y_train, y_test = y_array[train_idx], y_array[test_idx]
@@ -195,6 +192,34 @@ def kfold_comparison_metrics(model, X, y, n_splits=5):
         "Fold Mean APE SE (%)": fold_mean_ape_se,
         "Evaluated folds": int(len(fold_mean_apes_array)),
     }
+
+
+def kfold_comparison_metrics(model, X, y, n_splits=5):
+    X_array = np.asarray(X)
+    y_array = np.asarray(y).ravel()
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+    return _cross_val_ape_metrics(model, X_array, y_array, kf.split(X_array))
+
+
+def group_kfold_comparison_metrics(model, X, y, groups, n_splits=5):
+    X_array = np.asarray(X)
+    y_array = np.asarray(y).ravel()
+    groups_array = np.asarray(groups).ravel()
+
+    if len(groups_array) != len(y_array):
+        raise ValueError("groups must have the same number of rows as X and y.")
+
+    unique_groups = np.unique(groups_array)
+    if len(unique_groups) < n_splits:
+        raise ValueError(
+            f"GroupKFold with n_splits={n_splits} requires at least {n_splits} distinct groups, "
+            f"but got {len(unique_groups)}."
+        )
+
+    gkf = GroupKFold(n_splits=n_splits)
+
+    return _cross_val_ape_metrics(model, X_array, y_array, gkf.split(X_array, y_array, groups_array))
 
 
 def create_comparison_summary_table(*metrics_dicts):
