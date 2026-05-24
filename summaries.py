@@ -159,6 +159,7 @@ def kfold_comparison_metrics(model, X, y, n_splits=5):
     y_array = np.asarray(y).ravel()
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
     absolute_percentage_errors = []
+    fold_mean_apes = []
 
     for train_idx, test_idx in kf.split(X_array):
         fold_model = clone(model)
@@ -174,13 +175,25 @@ def kfold_comparison_metrics(model, X, y, n_splits=5):
                 (y_test[non_zero_mask] - y_pred[non_zero_mask]) / y_test[non_zero_mask]
             ) * 100
             absolute_percentage_errors.extend(fold_errors.tolist())
+            fold_mean_apes.append(float(np.mean(fold_errors)))
 
     if not absolute_percentage_errors:
         raise ValueError("Cannot calculate percentage error because all target values are zero.")
 
+    fold_mean_apes_array = np.asarray(fold_mean_apes, dtype=float)
+    if len(fold_mean_apes_array) > 1:
+        fold_mean_ape_std = float(np.std(fold_mean_apes_array, ddof=1))
+        fold_mean_ape_se = float(fold_mean_ape_std / np.sqrt(len(fold_mean_apes_array)))
+    else:
+        fold_mean_ape_std = 0.0
+        fold_mean_ape_se = 0.0
+
     return {
         "Mean APE (%)": float(np.mean(absolute_percentage_errors)),
-        "Median APE (%)": float(np.median(absolute_percentage_errors))
+        "Median APE (%)": float(np.median(absolute_percentage_errors)),
+        "Fold Mean APE SD (%)": fold_mean_ape_std,
+        "Fold Mean APE SE (%)": fold_mean_ape_se,
+        "Evaluated folds": int(len(fold_mean_apes_array)),
     }
 
 
@@ -195,8 +208,17 @@ def create_comparison_summary_table(*metrics_dicts):
 
 def create_kfold_summary_table(*metrics_dicts):
     summary_df = pd.DataFrame(metrics_dicts)
-    if "Model" in summary_df.columns:
-        summary_df = summary_df[["Model"] + [col for col in summary_df.columns if col != "Model"]]
+    ordered_columns = [
+        "Model",
+        "Mean APE (%)",
+        "Median APE (%)",
+        "Fold Mean APE SD (%)",
+        "Fold Mean APE SE (%)",
+        "Evaluated folds",
+    ]
+    present_ordered_columns = [col for col in ordered_columns if col in summary_df.columns]
+    remaining_columns = [col for col in summary_df.columns if col not in present_ordered_columns]
+    summary_df = summary_df[present_ordered_columns + remaining_columns]
     print("\nK-Fold Model Assessment Summary")
     print(summary_df.to_string(index=False))
     return summary_df
